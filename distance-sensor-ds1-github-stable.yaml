@@ -1,0 +1,263 @@
+substitutions:
+  devicename: distance_sensor_ds1
+  friendly_name: Distance Sensor DS1
+  # friendly_name: tof sensor
+
+esphome:
+  name_add_mac_suffix: True
+  platformio_options:
+    board_build.flash_mode: dio
+    board_build.f_cpu: 80000000L
+  on_boot:
+    - priority: 300
+      then:
+        lambda: |-
+          id(cpu_speed) = ESP.getCpuFreqMHz();
+    - priority: 200
+      then:
+        lambda: |-
+          std::string _lastSN = str_snake_case(get_mac_address().substr(6));
+          id(sn).publish_state("ds1-" + _lastSN);
+          id(screek_version).publish_state("V240122_1");
+  name: $devicename
+  friendly_name: $friendly_name
+  project: 
+    name: Screek.Ditance_Sensor
+    version: DS1
+
+  includes:
+    - tof_sensor
+  # libraries:
+  #   - "VL53L1x"
+
+
+# 串口配网！(23年3月7日_16时55分_)
+improv_serial:
+  
+# Enable logging
+logger:
+  # 总是指定uart0，因为这是arduino的风格。(23年3月10日_17时12分_)
+  hardware_uart: uart0
+
+debug:
+  update_interval: 30s
+
+globals:
+   - id: cpu_speed
+     type: int
+     restore_value: no
+     initial_value: '0'
+
+esp32:
+  board: lolin_c3_mini
+  framework:
+    type: arduino
+    version: 2.0.9
+    platform_version: 6.3.0
+
+external_components:
+  - source: screek-components
+
+# <<: !include common/common.yaml
+
+api:
+
+ota:
+ - platform: esphome
+   password: "your-ota-password"
+
+wifi:
+  output_power: 15dB
+  power_save_mode: LIGHT
+  reboot_timeout: 10min
+
+  ap:
+    ssid: "DISTANCE-SENSOR DS1"
+
+captive_portal:
+
+web_server:
+  port: 80
+
+light:
+  - platform: status_led
+    name: sys_status
+    pin: GPIO13
+    internal: True
+    restore_mode: ALWAYS_OFF
+  - platform: binary
+    name: "Red Info Light"
+    output: board_info_ed
+    entity_category: "config"
+    restore_mode: ALWAYS_OFF
+
+output:
+  - platform: gpio
+    id: board_info_ed
+    pin: GPIO12
+
+i2c:
+  sda: GPIO7
+  scl: GPIO11
+  # 启用后应该就不需要了。(23年4月17日_08时08分_)
+  # scan: False
+  scan: true
+  # frequency: 500 kHz
+  # id: bus_a
+
+binary_sensor:
+  - platform: status
+    name: Online
+    id: ha_connected
+
+  # - platform: template
+  #   name: "Door sensor"
+  #   lambda: |-
+  #     if (id(tof_distance_avg).state < 1400) {
+  #       // someone standing in door
+  #       return true;
+  #     } else {
+  #       // no-one there 
+  #       return false;
+  #     }
+  #   filters:
+  #     - delayed_off: 100ms
+
+sensor:
+  - platform: template
+    name: "ESP Cpu Speed"
+    accuracy_decimals: 0
+    unit_of_measurement: Mhz
+    lambda: |-
+      return (id(cpu_speed));
+    entity_category: "diagnostic"
+    disabled_by_default: True
+    update_interval: 600s
+  - platform: template
+    id: sys_esp_temperature
+    name: ESP Temperature
+    lambda: return temperatureRead();
+    # 这里不要引号也可以的，没事。(23年1月10日_15时44分_)
+    unit_of_measurement: °C
+    device_class: TEMPERATURE
+    update_interval: 45s
+    entity_category: "diagnostic"
+  - platform: uptime
+    # 显示名称
+    name: Uptime
+    id: sys_uptime
+    # 更新间隔日期(23年2月26日_17时46分_)
+    update_interval: 60s
+  - platform: wifi_signal 
+    name: RSSI
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+  - platform: template
+    id: esp_memory
+    icon: mdi:memory
+    name: ESP Free Memory
+    lambda: return heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    unit_of_measurement: 'kB'
+    state_class: measurement
+    entity_category: "diagnostic"
+    update_interval: 60s
+
+  - platform: custom
+    lambda: |-
+      auto people_counter = new PeopleCountSensor();
+      App.register_component(people_counter);
+      return {people_counter->people_sensor};
+    sensors:
+      - name: People
+        id: people_count
+        icon: "mdi:counter"
+        accuracy_decimals: 0
+        unit_of_measurement: "people"
+
+  # - platform: mqtt_subscribe
+  #   name: "People reset"
+  #   id: people_reset
+  #   topic: $devicename/sensor/people/reset
+  #   internal: true
+  #   on_value:
+  #     then:
+  #       - lambda: |-
+  #           resetCounter = 1;
+
+  - platform: template
+    name: TOF Distance
+    id: tof_distance
+    accuracy_decimals: 0
+    icon: "mdi:ruler"
+    unit_of_measurement: "mm"
+    #device_class: None
+    update_interval: 0.5s
+    lambda: |-
+      return distance[1];
+    # filters:
+    #   - delta: 100.0
+
+  - platform: template
+    name: tof distance avg
+    id: tof_distance_avg
+    accuracy_decimals: 0
+    icon: "mdi:ruler"
+    unit_of_measurement: "mm"
+    internal: true
+    #device_class: None
+    update_interval: 0.1s
+    lambda: |-
+      return distance[1];
+    filters:
+      - sliding_window_moving_average:
+          window_size: 10
+          send_every: 10
+
+text_sensor:
+  - platform: debug
+    # device:
+    #   name: "Device Info"
+    reset_reason:
+      name: "Reset Reason"
+      disabled_by_default: True
+  - platform: wifi_info
+    mac_address:
+      name: ESP MAC
+      entity_category: "diagnostic"
+      disabled_by_default: True
+  - platform: template
+    name: "SN"
+    id: sn
+    entity_category: "diagnostic"
+    # lambda: |-
+    #   std::string _lastSN = str_snake_case(get_mac_address().substr(6));
+    #   return {"1U-" + _lastSN };
+    update_interval: never
+  - platform: template
+    name: "SCREEK Version"
+    id: screek_version
+    icon: mdi:information-outline
+    entity_category: "diagnostic"
+    update_interval: never
+
+button:
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "ESP Reboot"
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "ESP Reboot"
+  - platform: template
+    name: "Reset People Counter"
+    on_press:
+      then:
+        - lambda: |-
+            resetCounter = 1;
+
+switch:
+  - platform: factory_reset
+    name: Factory Reset
+    disabled_by_default: True
+    icon: mdi:heart-broken
+    entity_category: diagnostic
