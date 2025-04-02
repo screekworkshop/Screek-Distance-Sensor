@@ -2,5 +2,8 @@
 yaml for ds1
 
 Tof drive part from: https://github.com/diplix/esphome-configuration
+custom platform support from: https://github.com/robertklep/esphome-custom-component
 
-https://docs.screek.io/ds1
+
+DS1 Doc:
+	https://docs.screek.io/ds1

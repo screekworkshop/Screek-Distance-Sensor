@@ -1,3 +1,6 @@
+# yaml for ds1
+# http://docs.screek.io/ds1
+
 substitutions:
   devicename: distance_sensor_ds1
   friendly_name: Distance Sensor DS1
@@ -9,6 +12,10 @@ esphome:
     board_build.flash_mode: dio
     board_build.f_cpu: 80000000L
   on_boot:
+    - priority: -100
+      then:
+        lambda: |-
+          id(people_count).publish_state(0);
     - priority: 300
       then:
         lambda: |-
@@ -18,25 +25,23 @@ esphome:
         lambda: |-
           std::string _lastSN = str_snake_case(get_mac_address().substr(6));
           id(sn).publish_state("ds1-" + _lastSN);
-          id(screek_version).publish_state("V240122_1");
-  name: $devicename
-  friendly_name: $friendly_name
+          id(screek_version).publish_state("V240512_1_Beta");
+  name: distance-sensor-ds1
+  friendly_name: Distance Sensor DS1
   project: 
     name: Screek.Ditance_Sensor
     version: DS1
 
   includes:
     - tof_sensor
-  # libraries:
-  #   - "VL53L1x"
 
+preferences:
+    flash_write_interval: 20s
 
-# 串口配网！(23年3月7日_16时55分_)
 improv_serial:
   
 # Enable logging
 logger:
-  # 总是指定uart0，因为这是arduino的风格。(23年3月10日_17时12分_)
   hardware_uart: uart0
 
 debug:
@@ -47,6 +52,14 @@ globals:
      type: int
      restore_value: no
      initial_value: '0'
+   - id: last_distance_update_time
+     type: unsigned long
+     restore_value: no
+     initial_value: '0'
+   - id: last_distance
+     type: float
+     restore_value: no
+     initial_value: "-1"
 
 esp32:
   board: lolin_c3_mini
@@ -56,8 +69,17 @@ esp32:
     platform_version: 6.3.0
 
 external_components:
-  - source: screek-components
-
+  # - source: screek-components
+  - source:
+      type: git
+      url: https://github.com/screekworkshop/custom_components_support_for_screek_l12
+      ref: main
+    components: [uart]
+  - source:
+      type: git
+      url: https://github.com/robertklep/esphome-custom-component
+    components: [ custom, custom_component ]
+    
 # <<: !include common/common.yaml
 
 api:
@@ -82,7 +104,9 @@ web_server:
 light:
   - platform: status_led
     name: sys_status
-    pin: GPIO13
+    pin: 
+      number: GPIO13
+      ignore_pin_validation_error: True
     internal: True
     restore_mode: ALWAYS_OFF
   - platform: binary
@@ -94,7 +118,9 @@ light:
 output:
   - platform: gpio
     id: board_info_ed
-    pin: GPIO12
+    pin: 
+      number: GPIO12
+      ignore_pin_validation_error: True
 
 i2c:
   sda: GPIO7
@@ -195,8 +221,26 @@ sensor:
     update_interval: 0.5s
     lambda: |-
       return distance[1];
-    # filters:
-    #   - delta: 100.0
+    filters:
+        - lambda: !lambda |-
+            unsigned long time_diff = abs(static_cast<long long>(millis() - id(last_distance_update_time)));
+            unsigned long distance_update_interval = id(distance_refresh_rate).state * 1000;
+
+            if (time_diff <= distance_update_interval) {
+              float diff_distance = abs(id(last_distance) - x);
+              if (diff_distance > id(distance_delta_trigger).state){
+                ESP_LOGD("Distance Update Check - Difference", "Current Distance: %.2f mm, Last Distance: %.2f mm, Difference: %.2f mm exceeds the minimum change threshold of %.2f mm.", x, id(last_distance), diff_distance, id(distance_delta_trigger).state);
+                id(last_distance_update_time) = millis();
+                id(last_distance) = x;
+                return x;
+              }
+              ESP_LOGD("Distance Update Check - Timing", "Time since last update: %lu s, Required update interval: %lu s. Conditions not met, skipping update.", time_diff / 1000, distance_update_interval / 1000);
+              return {};
+            };
+
+            id(last_distance_update_time) = millis();
+            id(last_distance) = x;
+            return x;
 
   - platform: template
     name: tof distance avg
@@ -261,3 +305,31 @@ switch:
     disabled_by_default: True
     icon: mdi:heart-broken
     entity_category: diagnostic
+
+number:
+  - platform: template
+    name: Distance Refresh Rate
+    id: distance_refresh_rate
+    icon: mdi:timer-sand
+    min_value: 0.5
+    max_value: 180
+    optimistic: True
+    step: 1
+    initial_value: 0.5
+    unit_of_measurement: 's'
+    mode: box
+    entity_category: config
+    restore_value: True
+  - platform: template
+    name: Distance Delta Trigger
+    id: distance_delta_trigger
+    icon: mdi:ruler-square
+    min_value: 0
+    max_value: 1000
+    step: 1
+    initial_value: 100
+    unit_of_measurement: 'mm'
+    mode: box
+    optimistic: True
+    restore_value: True
+    entity_category: config
