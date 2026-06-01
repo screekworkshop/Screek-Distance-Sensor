@@ -35,6 +35,9 @@ esphome:
   includes:
     - tof_sensor
 
+  libraries:
+    - Wire
+
 preferences:
     flash_write_interval: 20s
 
