@@ -193,7 +193,7 @@ sensor:
   - platform: custom
     lambda: |-
       auto people_counter = new PeopleCountSensor();
-      App.register_component(people_counter);
+      App.register_component_(people_counter);
       return {people_counter->people_sensor};
     sensors:
       - name: People
