@@ -35,6 +35,9 @@ esphome:
   includes:
     - tof_sensor
 
+  libraries:
+    - Wire
+
 preferences:
     flash_write_interval: 20s
 
@@ -65,8 +68,6 @@ esp32:
   board: lolin_c3_mini
   framework:
     type: arduino
-    version: 2.0.9
-    platform_version: 6.3.0
 
 external_components:
   # - source: screek-components
@@ -192,7 +193,7 @@ sensor:
   - platform: custom
     lambda: |-
       auto people_counter = new PeopleCountSensor();
-      App.register_component(people_counter);
+      App.register_component_(people_counter);
       return {people_counter->people_sensor};
     sensors:
       - name: People
@@ -286,9 +287,6 @@ text_sensor:
     update_interval: never
 
 button:
-  - platform: restart
-    icon: mdi:power-cycle
-    name: "ESP Reboot"
   - platform: restart
     icon: mdi:power-cycle
     name: "ESP Reboot"
